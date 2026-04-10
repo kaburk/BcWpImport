@@ -1,0 +1,13 @@
+{
+    "name": "baserproject/bc-wp-import",
+    "description": "WordPress WXR import plugin for baserCMS",
+    "homepage": "https://basercms.net",
+    "type": "cakephp-plugin",
+    "license": "MIT",
+    "vendor-dir": "../../vendor",
+    "autoload": {
+        "psr-4": {
+            "BcWpImport\\": "src/"
+        }
+    }
+}

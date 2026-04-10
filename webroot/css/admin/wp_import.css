@@ -1,0 +1,95 @@
+/* 履歴・未完了テーブルのラッパー: 外枠ボーダー・スクロール・ヘッダ固定 */
+.bc-wp-import__scroll-table {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.bc-wp-import__scroll-table .bca-table-listup__thead-th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f5f5f5;
+}
+
+/* 解析結果グループ見出し */
+.bc-wp-import__group-heading {
+    margin: 1.2em 0 0.3em;
+    padding: 0.3em 0.8em;
+    font-weight: bold;
+    font-size: 0.9em;
+    background: #f0f4f8;
+    border-left: 3px solid #4a90d9;
+    border-radius: 2px;
+}
+
+/* エラーボックス */
+.bc-wp-import__upload-error {
+    margin: 1em 0;
+    padding: 1em 1.2em;
+    border: 1px solid #c33;
+    border-radius: 4px;
+    background: #fff6f6;
+    color: #c33;
+    white-space: pre-wrap;
+    line-height: 1.8;
+}
+
+/* ログビューアー */
+.bc-wp-import__log-wrap {
+    position: relative;
+    background: #fff;
+    border-radius: 4px;
+}
+
+.bc-wp-import__log-viewer {
+    height: 240px;
+    overflow-y: auto;
+    background: #fff !important;
+    color: #000;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0;
+    font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.bc-wp-import__log-viewer--placeholder {
+    background: #fff !important;
+    color: #000 !important;
+    border: 1px solid #ddd;
+    font-family: inherit;
+}
+
+body.bc-wp-import--processing,
+body.bc-wp-import--processing * {
+    cursor: wait !important;
+}
+
+/* 処理中スピナー */
+.bc-wp-import__spinner-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.bc-wp-import__spinner {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid #ccc;
+    border-top-color: #4a90d9;
+    border-radius: 50%;
+    animation: bc-wp-import-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes bc-wp-import-spin {
+    to { transform: rotate(360deg); }
+}
