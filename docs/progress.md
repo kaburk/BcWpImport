@@ -74,19 +74,29 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
   - `.bc-wp-import__log-wrap` / `.bc-wp-import__log-viewer` — 黒背景等幅フォントのログ表示エリア
   - `.bc-wp-import__upload-error` — バリデーションエラー用スタイル
 #### テスト
-- `tests/TestCase/Service/WxrParserServiceTest.php`（骨格のみ）
+- `tests/TestCase/Service/WxrParserServiceTest.php`
+  - `testAnalyzeThrowsWhenFileNotFound` — ファイル未存在時の例外
+  - `testAnalyze` — WXR サマリ（version / title / language / counts / authors / categories / tags / unsupported_types）
+  - `testParseItems` — post 本文・抜粋・カテゴリ・タグのパース
+  - `testAnalyzeThrowsOnInvalidXml` — 不正 XML の例外
+  - `testAnalyzeMultipleAuthorsSorted` — 著者の重複排除とソート順
+  - `testParseItemsWithHierarchy` — `wp_post_id` / `wp_post_parent` のパース
+- `tests/TestCase/Service/WpImportServiceTest.php`
+  - `testImportJobCreatesPagesPostsAndReport` — page / post の取込、親子ページ、カテゴリ・タグ生成、URL 置換、レポート CSV・ログ出力
 
 ---
 
 ## 残件
 
 #### v1.0 向け（必須）
-- [ ] Docker コンテナ内でユニットテストを実行して動作確認
-- [ ] `WxrParserServiceTest` にテストケースを追加（正常系・異常系・マルチ著者等）
-- [ ] 実DBを使った `WpImportService` の結合テスト（実際にWXRを取り込んで記事・カテゴリ・タグが正しく登録されるか確認）
+- [x] Docker コンテナ内でユニットテストを実行して動作確認
+- [x] `WxrParserServiceTest` にテストケースを追加（正常系・異常系・マルチ著者等）
+  - 追加: 不正 XML の例外確認・マルチ著者のソート順・wp_post_id / wp_post_parent のパース
+- [x] 実DBを使った `WpImportService` の結合テスト（実際にWXRを取り込んで記事・カテゴリ・タグが正しく登録されるか確認）
+  - 追加: 親子ページ、フォルダ + index ページ、カテゴリ・タグ生成、本文 / 抜粋の URL 置換、レポート CSV / ログ生成
 
 #### v1.1以降（テスト拡充）
-- [ ] `WpImportServiceTest` の作成（appendLog / getLogLines のユニットテスト含む）
+- [ ] `WpImportServiceTest` の追加拡充（appendLog / getLogLines のユニットテストを追加）
 - [ ] `WpImportsControllerTest` の作成（get_log レスポンス・delete_all 等）
 
 #### 将来対応（大量データ・非同期処理）
@@ -115,4 +125,4 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - 履歴テーブルの日時は `Timestamp` Behavior が `created` / `modified` を自動セット。テンプレート側で `$job->created->format('Y/m/d H:i')` にて表示。
 - BcWpImportJobsTable に `addBehavior('Timestamp')` を追加済み（欠落が原因で created が null になっていた問題を修正済み）。
 - JS の IIFE パターン（`(function(){'use strict';...})();`）はファイル内に1つのみ。大規模置換後は `grep -c "^})();"` で確認すること。
-- エディタ上の静的解析エラーなし。Docker コンテナ内での実行テストは未実施。
+- `WxrParserServiceTest` / `WpImportServiceTest` は Docker コンテナ内で実行済み（7 tests, 52 assertions）。

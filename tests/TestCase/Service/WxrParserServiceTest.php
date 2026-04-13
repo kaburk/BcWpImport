@@ -108,4 +108,105 @@ XML);
         $this->assertEquals('News', $items[0]['categories'][0]['label']);
         $this->assertEquals('Release', $items[0]['tags'][0]['label']);
     }
+
+    public function testAnalyzeThrowsOnInvalidXml(): void
+    {
+        $service = new WxrParserService();
+        $filePath = TMP . 'bc_wp_import_invalid.xml';
+        file_put_contents($filePath, 'THIS IS NOT XML <<<>>>');
+
+        try {
+            $service->analyze($filePath);
+            $this->fail('Expected InvalidArgumentException was not thrown.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertTrue(true);
+        } finally {
+            unlink($filePath);
+        }
+    }
+
+    public function testAnalyzeMultipleAuthorsSorted(): void
+    {
+        $service = new WxrParserService();
+        $filePath = TMP . 'bc_wp_import_authors.xml';
+        file_put_contents($filePath, <<<'XML'
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0"
+        xmlns:wp="http://wordpress.org/export/1.2/">
+    <channel>
+        <wp:wxr_version>1.2</wp:wxr_version>
+        <item>
+            <wp:post_type>post</wp:post_type>
+            <wp:post_author>charlie</wp:post_author>
+        </item>
+        <item>
+            <wp:post_type>post</wp:post_type>
+            <wp:post_author>alice</wp:post_author>
+        </item>
+        <item>
+            <wp:post_type>post</wp:post_type>
+            <wp:post_author>bob</wp:post_author>
+        </item>
+        <item>
+            <wp:post_type>post</wp:post_type>
+            <wp:post_author>alice</wp:post_author>
+        </item>
+    </channel>
+</rss>
+XML);
+
+        $result = $service->analyze($filePath);
+        unlink($filePath);
+
+        // 重複なし・アルファベット順
+        $this->assertEquals(['alice', 'bob', 'charlie'], $result['authors']);
+    }
+
+    public function testParseItemsWithHierarchy(): void
+    {
+        $service = new WxrParserService();
+        $filePath = TMP . 'bc_wp_import_hierarchy.xml';
+        file_put_contents($filePath, <<<'XML'
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0"
+        xmlns:content="http://purl.org/rss/1.0/modules/content/"
+        xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:wp="http://wordpress.org/export/1.2/">
+    <channel>
+        <item>
+            <title>Parent Page</title>
+            <wp:post_type>page</wp:post_type>
+            <wp:post_id>10</wp:post_id>
+            <wp:post_parent>0</wp:post_parent>
+            <wp:post_name>parent</wp:post_name>
+            <wp:status>publish</wp:status>
+        </item>
+        <item>
+            <title>Child Page</title>
+            <wp:post_type>page</wp:post_type>
+            <wp:post_id>20</wp:post_id>
+            <wp:post_parent>10</wp:post_parent>
+            <wp:post_name>child</wp:post_name>
+            <wp:status>publish</wp:status>
+        </item>
+    </channel>
+</rss>
+XML);
+
+        $items = $service->parseItems($filePath);
+        unlink($filePath);
+
+        $this->assertCount(2, $items);
+
+        $parent = $items[0];
+        $this->assertEquals(10, $parent['wp_post_id']);
+        $this->assertEquals(0, $parent['wp_post_parent']);
+        $this->assertEquals('parent', $parent['post_name']);
+
+        $child = $items[1];
+        $this->assertEquals(20, $child['wp_post_id']);
+        $this->assertEquals(10, $child['wp_post_parent']);
+        $this->assertEquals('child', $child['post_name']);
+    }
 }
