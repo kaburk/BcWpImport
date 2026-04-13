@@ -328,7 +328,7 @@ $csrfToken = $this->request->getAttribute('csrfToken');
             data-bca-target="#js-history-body"
             aria-expanded="false"
             aria-controls="js-history-body">
-        <?= __d('baser_core', '最近のジョブ履歴') ?>&nbsp;&nbsp;
+        <?= __d('baser_core', '最近の履歴') ?>&nbsp;&nbsp;
         <i class="bca-icon--chevron-down bca-collapse__btn-icon"></i>
     </button>
 </div>
