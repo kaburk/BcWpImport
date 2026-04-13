@@ -1,6 +1,6 @@
 # BcWpImport 進捗・残件メモ
 
-更新日: 2026-04-13
+更新日: 2026-04-14
 
 BcWpImport の実装状況と残件のみを記録する。  
 BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/progress.md) を参照。
@@ -33,12 +33,16 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 
 #### サービス
 - `WxrParserService` — XML構文解析・item集計・著者/タクソノミー抽出
+  - `loadXml` で libxml の詳細エラーを例外へ含め、WXR不正時の原因特定を容易化
 - `WpImportService`
   - `createJob` — ジョブ作成・ファイル保存
   - `analyzeJob` — 解析実行・サマリ生成
   - `saveReviewSettings` — 著者マッピング・オプション保存
   - `startBackgroundImport` — CLI コマンド起動による非同期インポート開始
+  - `resolvePhpCliBinary` — Web 実行時でも CLI 用 PHP バイナリを解決
+  - `buildBackgroundCommand` — `bin/cake.php` を直接起動してバックグラウンドジョブを開始
   - `importJob` — 固定ページ・ブログ記事の取り込み
+  - `saveJobProgress` — バッチ単位で processed / success / skip / error を DB へ反映
   - `markJobFailed` — CLI 側の異常終了時にジョブを failed へ更新
   - `getJobStatus` / `cancelJob` / `getReportCsvPath`
   - `getLogLines(token, limit)` — ログファイル（`tmp/bc_wp_import/{token}.log`）の最新N行を返す
@@ -57,6 +61,7 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - スラッグ競合処理（suffix / skip / overwrite）
 - URL置換（WordPress URL → 指定ドメイン）
 - アイテム単位の結果収集
+- 進捗件数のバッチ単位DB保存（status polling で件数追従可能）
 - 取込結果CSVの生成
   - ログファイルへの書き出し（開始・100件ごと・スキップ/エラー発生時・完了）
 
@@ -75,6 +80,7 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
   - `_elapsedTimer`: 1秒ごとに経過時間を更新
   - `updateBulkDeleteButton`: pending / history 両テーブル対応
   - JSバリデーション：インポート実行前に必須項目を検証してエラー表示
+  - import 実行後は同期レスポンス待ちせず、status / log ポーリングへ遷移
 - `webroot/css/admin/wp_import.css`
   - `.bc-wp-import__progress-track` / `.bc-wp-import__progress-bar-indeterminate` — アニメーション付きインジケーターバー
   - `.bc-wp-import__log-wrap` / `.bc-wp-import__log-viewer` — 黒背景等幅フォントのログ表示エリア
@@ -125,6 +131,11 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - [ ] `warning_log_path` / `error_log_path` の活用（警告・エラーの詳細ダウンロード）
 - [x] ジョブクリーンアップコマンドの実装 — `expires_at` を参照して期限切れジョブ（WXR ファイル・ログファイル・DB レコード）を一括削除する `bin/cake BcWpImport.cleanup` コマンド
 
+#### 運用安定化（次優先）
+- [ ] `cancel` の実処理停止対応 — 現状はジョブ状態更新のみで、実行中 CLI プロセスの停止までは行わない
+- [ ] stale `processing` ジョブの回復方針整理 — 起動失敗や手動停止後の再開 / failed 化ルールを明確化
+- [ ] 重複起動の防止強化 — 同一ジョブ token の多重実行をより厳密に抑止
+
 #### コンテンツタイプ拡張（将来対応）
 - [ ] **コンテンツリンク（ContentLink）対応** — WXR の `wp:post_type=page` かつ postmeta に URL が含まれる場合に ContentLink として取込予定
 - [ ] **カスタムコンテンツ（CustomContent）対応** — WordPress の Custom Post Type を baserCMS のカスタムコンテンツとして取込予定（フィールド定義の自動マッピング含む）
@@ -138,8 +149,9 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 ## 実装メモ
 
 - `WpImportService` は管理画面からはバックグラウンドコマンドで起動し、CLI 側で post/page ごとの実データ保存を行う構成。
+- バックグラウンド起動は `bin/cake.php` を直接実行する。`bin/cake` はシェルラッパーのため PHP からの直接実行対象にはしない。
 - `WpImportService` は import 実行時に各アイテムの action と message をCSVへ書き出す。
-- ログファイルは `TMP . 'bc_wp_import' . DS . $token . '.log'` に書き出す。エラー・スキップは毎回、成功は100件ごとに出力（大量データのパフォーマンス考慮）。
+- ログファイルは `TMP . 'bc_wp_import' . DS . $token . '.log'` に書き出す。エラー・スキップは毎回、成功は100件ごとに出力し、同じタイミングで進捗件数もDBへ保存する。
 - `get_log` アクションはトークン形式（`/^[a-f0-9]+$/`）で検証し、不正なトークンは空配列を返す。
 - JS の `showSection('js-progress-section')` 呼び出し時にポーリング開始、他セクションへの切替時に停止。
 - InflectedRoute は URL の camelCase 変換を行わないため、全アクションは snake_case で定義する必要がある。
@@ -147,4 +159,10 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - BcWpImportJobsTable に `addBehavior('Timestamp')` を追加済み（欠落が原因で created が null になっていた問題を修正済み）。
 - JS の IIFE パターン（`(function(){'use strict';...})();`）はファイル内に1つのみ。大規模置換後は `grep -c "^})();"` で確認すること。
 - `BcWpImport.cleanup` は `--dry-run` をサポートし、`wxr_path` / `report_csv_path` / `warning_log_path` / `error_log_path` / `tmp/bc_wp_import/{token}.log` を削除対象に含める。
-- `WxrParserServiceTest` / `WpImportServiceTest` / `WpImportsControllerTest` / `CleanupCommandTest` は Docker コンテナ内で実行済み（21 tests, 112 assertions）。
+- `WxrParserServiceTest` / `WpImportServiceTest` / `WpImportsControllerTest` / `CleanupCommandTest` は Docker コンテナ内で実行済み（21 tests, 113 assertions）。
+
+## 次の方針
+
+1. まずは非同期インポートの運用安定化を優先する。
+2. 具体的には `cancel` の実プロセス停止、stale `processing` ジョブの回復、重複起動防止を先に固める。
+3. その後に、真に大量データ向けの Chunked / resumable import へ進む。
