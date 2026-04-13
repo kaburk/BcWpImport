@@ -1,19 +1,13 @@
-# WXR移行プラグイン 進捗・残件メモ
+# BcWpImport 進捗・残件メモ
 
-更新日: 2026-04-11（ログ機能・UI改善 反映）
+更新日: 2026-04-13
 
-## 対象プラグイン
-
-| プラグイン | 方向 | 状態 |
-|---|---|---|
-| BcWpImport | WordPress WXR → baserCMS 取り込み | コア機能実装済み・テスト未実施 |
-| BcWpExport | baserCMS → WordPress WXR 書き出し | コア機能実装済み・テスト骨格あり・実行テスト未実施 |
+BcWpImport の実装状況と残件のみを記録する。  
+BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/progress.md) を参照。
 
 ---
 
-## BcWpImport
-
-### 実装済み
+## 実装済み
 
 #### プラグイン基盤
 - Plugin.php / config.php / setting.php / routes.php
@@ -84,7 +78,7 @@
 
 ---
 
-### 残件
+## 残件
 
 #### v1.0 向け（必須）
 - [ ] Docker コンテナ内でユニットテストを実行して動作確認
@@ -98,6 +92,11 @@
 #### 将来対応（大量データ・非同期処理）
 - [ ] Chunked / resumable import（大量データ対応・分割実行）
 - [ ] `warning_log_path` / `error_log_path` の活用（警告・エラーの詳細ダウンロード）
+- [ ] ジョブクリーンアップコマンドの実装 — `expires_at` を参照して期限切れジョブ（WXR ファイル・ログファイル・DB レコード）を一括削除する `bin/cake BcWpImport.cleanup` コマンド
+
+#### コンテンツタイプ拡張（将来対応）
+- [ ] **コンテンツリンク（ContentLink）対応** — WXR の `wp:post_type=page` かつ postmeta に URL が含まれる場合に ContentLink として取込予定
+- [ ] **カスタムコンテンツ（CustomContent）対応** — WordPress の Custom Post Type を baserCMS のカスタムコンテンツとして取込予定（フィールド定義の自動マッピング含む）
 
 #### サービス分離（設計推奨・低優先度）
 - [ ] `PageImporterService` の分離（現在 `WpImportService` に内包）
@@ -105,49 +104,7 @@
 - [ ] `WxrReader` utility（SimpleXML/XMLReader 低レイヤ共通化）
 - [ ] `WxrMapper` utility（WXR item → baserCMS 用配列変換の切り出し）
 
----
-
-## BcWpExport
-
-詳細は [BcWpExport/docs/progress.md](../../BcWpExport/docs/progress.md) を参照。
-
-### 実装済み（概要）
-
-#### プラグイン基盤
-- `BcWpExportPlugin.php` / `config.php` / `setting.php` / `routes.php`
-- Migration: `CreateBcWpExportJobs`
-- Entity: `BcWpExportJob` / Table: `BcWpExportJobsTable`
-
-#### コントローラ（`WpExportsController`）
-- `index` / `create` / `download` / `delete` / `delete_all` — 全アクション実装済み
-
-#### サービス
-- `WxrWriterService` — DOMDocument を使ったWXR XML生成（名前空間・CDATA・整形・postmeta対応）
-- `WpExportService` — 設定正規化・固定ページ/記事収集・item変換・アタッチメント出力・URL絶対化
-- `WpExportAdminService` — 一覧表示用 view 変数生成・ジョブ削除
-
-#### フロントエンド
-- `templates/Admin/WpExports/index.php`（フィルタ・オプション・結果表示・履歴管理）
-- `webroot/js/admin/wp_export.js`（AJAX通信・DOM更新・チェックボックス管理）
-- `webroot/css/admin/wp_export.css`
-
-#### テスト
-- `tests/TestCase/Service/WxrWriterServiceTest.php`（2件のテストケース実装済み）
-
-### 残件（概要）
-
-#### v1.0 向け（必須）
-- [ ] Docker コンテナ内でユニットテストを実行（`WxrWriterServiceTest` の実行確認）
-- [ ] `WxrWriterServiceTest` にケースを追加（ページ親子関係・アタッチメント・URLエッジケース）
-
-#### 将来対応
-- [ ] `WpExportServiceTest` / `WpExportsControllerTest` の作成
-- [ ] `status` / `cancel` アクション（非同期化対応時）
-- [ ] Chunked / resumable export
-
----
-
-## 実装上の共通メモ
+## 実装メモ
 
 - `WpImportService` は解析済みジョブを読み込み、post/page ごとに実データへ保存する構成（同期処理）。
 - `WpImportService` は import 実行時に各アイテムの action と message をCSVへ書き出す。
@@ -155,10 +112,6 @@
 - `get_log` アクションはトークン形式（`/^[a-f0-9]+$/`）で検証し、不正なトークンは空配列を返す。
 - JS の `showSection('js-progress-section')` 呼び出し時にポーリング開始、他セクションへの切替時に停止。
 - InflectedRoute は URL の camelCase 変換を行わないため、全アクションは snake_case で定義する必要がある。
-- `WpExportService` は DB から固定ページとブログ記事を収集して WXR を組み立てる。同期一括処理のため、ジョブは即 `completed` になる。
-- `WxrWriterService` の XML 生成は DOMDocument + namespaced element を使用。
-- `include_media_urls` が有効な場合はアイキャッチを `attachment` post_type として items に追加し、`_thumbnail_id` postmeta を付与する。
-- `source_summary` のキーは `pages` / `posts` / `categories` / `tags` / `authors` / `total_items`。
 - 履歴テーブルの日時は `Timestamp` Behavior が `created` / `modified` を自動セット。テンプレート側で `$job->created->format('Y/m/d H:i')` にて表示。
 - BcWpImportJobsTable に `addBehavior('Timestamp')` を追加済み（欠落が原因で created が null になっていた問題を修正済み）。
 - JS の IIFE パターン（`(function(){'use strict';...})();`）はファイル内に1つのみ。大規模置換後は `grep -c "^})();"` で確認すること。
