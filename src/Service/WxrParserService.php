@@ -101,6 +101,8 @@ class WxrParserService
             }
 
             $items[] = [
+                'wp_post_id'    => (int) ($wpItem->post_id ?? 0),
+                'wp_post_parent' => (int) ($wpItem->post_parent ?? 0),
                 'title' => trim((string) ($item->title ?? '')),
                 'post_type' => trim((string) ($wpItem->post_type ?? 'unknown')),
                 'post_status' => trim((string) ($wpItem->status ?? 'publish')),

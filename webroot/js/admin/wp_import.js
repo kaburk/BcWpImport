@@ -29,6 +29,28 @@
     }
 
     let _elapsedTimer = null;
+    let _logPollTimer = null;
+
+    function stopLogPolling() {
+        if (_logPollTimer) { clearInterval(_logPollTimer); _logPollTimer = null; }
+    }
+
+    function startLogPolling(token, logEl) {
+        stopLogPolling();
+        const config = window.bcWpImportConfig || {};
+        _logPollTimer = setInterval(async function () {
+            try {
+                const resp = await fetch(config.adminBase + '/get_log?token=' + encodeURIComponent(token));
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (Array.isArray(data.lines) && data.lines.length > 0 && logEl) {
+                    logEl.classList.remove('bc-wp-import__log-viewer--placeholder');
+                    logEl.textContent = data.lines.join('\n');
+                    logEl.scrollTop = logEl.scrollHeight;
+                }
+            } catch (_) {}
+        }, 2000);
+    }
 
     function showSection(id) {
         document.body.classList.toggle('bc-wp-import--processing', id === 'js-progress-section');
@@ -39,6 +61,7 @@
 
         // タイマーを停止（セクション離脱時）
         if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+        if (id !== 'js-progress-section') { stopLogPolling(); }
 
         if (id === 'js-progress-section') {
             // 経過時間カウンター
@@ -58,7 +81,7 @@
                 logEl.style.background = '#fff';
                 logEl.style.border = '1px solid #ddd';
                 logEl.style.fontFamily = 'inherit';
-                logEl.textContent = 'インポートを実行中です。完了後にログが表示されます...';
+                logEl.textContent = 'インポートを実行中です。ログを取得中...';
             }
         }
     }
@@ -334,15 +357,21 @@
                 startImportBtn.disabled = true;
                 showSection('js-progress-section');
 
+                const importToken = document.getElementById('js-review-token')?.value ?? '';
+                const importLogEl = document.getElementById('js-import-log');
+                startLogPolling(importToken, importLogEl);
+
                 try {
                     await apiPost(config.adminBase + '/save_review_settings', collectReviewFormData(), config.csrfToken);
 
                     const tokenFormData = new FormData();
-                    tokenFormData.append('token', document.getElementById('js-review-token')?.value ?? '');
+                    tokenFormData.append('token', importToken);
                     const result = await apiPost(config.adminBase + '/import', tokenFormData, config.csrfToken);
 
+                    stopLogPolling();
                     showResult(result.result || {});
                 } catch (error) {
+                    stopLogPolling();
                     showSection('js-upload-section');
                     showError(error.message || 'インポートに失敗しました。');
                     startImportBtn.disabled = false;

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace BcWpImport\Service;
 
+use BaserCore\Service\ContentFoldersService;
 use BaserCore\Service\PagesService;
 use BaserCore\Utility\BcUtil;
 use BcBlog\Service\BlogCategoriesService;
@@ -204,6 +205,20 @@ class WpImportService
         $logPath = TMP . 'bc_wp_import' . DS . $job->job_token . '.log';
         $this->appendLog($logPath, '[INFO] インポートを開始します。対象件数: ' . count($items) . ' 件', true);
 
+        // 固定ページの親子関係を解決するための事前スキャン
+        // wp_post_id が他ページの wp_post_parent として使われているものは「フォルダ」として扱う
+        $parentWpIds = [];
+        foreach ($items as $item) {
+            if ((string) ($item['post_type'] ?? '') === 'page') {
+                $wpParent = (int) ($item['wp_post_parent'] ?? 0);
+                if ($wpParent > 0) {
+                    $parentWpIds[$wpParent] = true;
+                }
+            }
+        }
+        // wp_post_id → 作成した ContentFolder の content_id マップ
+        $wpIdToFolderContentId = [];
+
         foreach ($items as $item) {
             $postType = (string) ($item['post_type'] ?? '');
             $title = (string) ($item['title'] ?? '');
@@ -216,7 +231,22 @@ class WpImportService
             $processed++;
             try {
                 if ($postType === 'page') {
-                    $result = $this->importPage($item, $settings, $defaultUserId);
+                    $wpPostId   = (int) ($item['wp_post_id'] ?? 0);
+                    $wpParentId = (int) ($item['wp_post_parent'] ?? 0);
+                    $isFolder   = isset($parentWpIds[$wpPostId]);
+
+                    // 親フォルダの解決: wp_post_parent がマップにあればそれを使い、なければ設定値を使う
+                    $rootFolderId      = (int) ($settings['content_folder_id'] ?? 1 ?: 1);
+                    $resolvedParentId  = ($wpParentId > 0 && isset($wpIdToFolderContentId[$wpParentId]))
+                        ? $wpIdToFolderContentId[$wpParentId]
+                        : $rootFolderId;
+
+                    $result = $this->importPage($item, $settings, $defaultUserId, $resolvedParentId, $isFolder);
+
+                    // フォルダとして作成した場合、後続ページの親解決のためマップに登録する
+                    if ($isFolder && $wpPostId > 0 && isset($result['folder_content_id'])) {
+                        $wpIdToFolderContentId[$wpPostId] = $result['folder_content_id'];
+                    }
                 } elseif ($postType === 'post') {
                     $result = $this->importPost($item, $settings, $defaultUserId);
                 } else {
@@ -237,7 +267,8 @@ class WpImportService
                 } else {
                     $successCount++;
                     $reportRows[] = [$postType, $title, $postName, $result['action'], ''];
-                    if ($processed % 100 === 0) {
+                    $batchSize = (int) Configure::read('BcWpImport.batchSize', 10);
+                    if ($processed % $batchSize === 0) {
                         $this->appendLog($logPath, '[INFO] 処理中... ' . $processed . ' 件完了（成功:' . $successCount . ' スキップ:' . $skipCount . ' エラー:' . $errorCount . '）');
                     }
                 }
@@ -315,33 +346,54 @@ class WpImportService
         ];
     }
 
-    protected function importPage(array $item, array $settings, int $defaultUserId): array
+    /**
+     * WXR の page アイテムを baserCMS に取り込む
+     *
+     * $asFolder が true のとき（このページが他ページの wp_post_parent として使われている場合）:
+     *   → ContentFolder を作成し、コンテンツがあれば index ページも作成する
+     *   → 戻り値に folder_content_id を含める（後続ページの親解決用）
+     *
+     * $asFolder が false のとき:
+     *   → 通常の固定ページとして $resolvedParentId の下に作成する
+     */
+    protected function importPage(array $item, array $settings, int $defaultUserId, int $resolvedParentId = 0, bool $asFolder = false): array
     {
-        $pagesService = new PagesService();
-        $parentId = (int) ($settings['content_folder_id'] ?? 1 ?: 1);
-        $baseSlug = $this->normalizeSlug((string) ($item['post_name'] ?: $item['title']));
-        $existingPage = $this->findExistingPage($parentId, $baseSlug);
+        if ($resolvedParentId === 0) {
+            $resolvedParentId = (int) ($settings['content_folder_id'] ?? 1 ?: 1);
+        }
+
         $slugStrategy = (string) ($settings['slug_strategy'] ?? 'suffix');
-        $slug = $this->resolvePageSlug((string) ($item['post_name'] ?: $item['title']), $parentId, $slugStrategy);
+        $baseSlug = $this->normalizeSlug((string) ($item['post_name'] ?: $item['title']));
+        $status = $this->resolvePublishStatus((string) ($item['post_status'] ?? 'publish'), (string) ($settings['publish_strategy'] ?? 'keep'));
+        $authorId = $this->resolveAuthorId((string) $item['post_author'], $settings, $defaultUserId);
+        $title = (string) ($item['title'] ?: $baseSlug);
+
+        if ($asFolder) {
+            return $this->importPageAsFolder($item, $settings, $resolvedParentId, $slugStrategy, $baseSlug, $title, $status, $authorId);
+        }
+
+        // 通常ページとして取り込む
+        $pagesService = new PagesService();
+        $existingPage = $this->findExistingPage($resolvedParentId, $baseSlug);
+        $slug = $this->resolvePageSlug((string) ($item['post_name'] ?: $item['title']), $resolvedParentId, $slugStrategy);
         if ($slug === null) {
             return ['action' => 'skipped', 'message' => sprintf('Page skipped: %s', $item['title'])];
         }
 
-        $status = $this->resolvePublishStatus((string) ($item['post_status'] ?? 'publish'), (string) ($settings['publish_strategy'] ?? 'keep'));
         $pageData = [
             'contents' => $this->replaceUrls((string) ($item['post_content'] ?: $item['post_excerpt']), $settings),
             'draft' => $this->replaceUrls((string) ($item['post_content'] ?: $item['post_excerpt']), $settings),
             'page_template' => 'default',
             'content' => [
-                'parent_id' => $parentId,
-                'title' => (string) ($item['title'] ?: $slug),
+                'parent_id' => $resolvedParentId,
+                'title' => $title,
                 'name' => $slug,
                 'plugin' => 'BaserCore',
                 'type' => 'Page',
                 'site_id' => 1,
                 'alias_id' => null,
                 'entity_id' => null,
-                'author_id' => $this->resolveAuthorId((string) $item['post_author'], $settings, $defaultUserId),
+                'author_id' => $authorId,
                 'self_status' => $status,
             ],
         ];
@@ -353,6 +405,105 @@ class WpImportService
 
         $pagesService->create($pageData, ['associated' => ['Contents']]);
         return ['action' => 'created'];
+    }
+
+    /**
+     * 子ページが存在する WordPress ページを ContentFolder として取り込む
+     * コンテンツがある場合は folder/index ページも合わせて作成する
+     *
+     * @return array action / folder_content_id（後続ページの親解決用）
+     */
+    protected function importPageAsFolder(array $item, array $settings, int $parentId, string $slugStrategy, string $baseSlug, string $title, bool $status, int $authorId): array
+    {
+        $foldersService = new ContentFoldersService();
+        $contentsTable = TableRegistry::getTableLocator()->get('BaserCore.Contents');
+
+        // 既存フォルダを確認
+        $existingFolder = $contentsTable->find()
+            ->where([
+                'Contents.type' => 'ContentFolder',
+                'Contents.parent_id' => $parentId,
+                'Contents.name' => $baseSlug,
+                'Contents.deleted_date IS' => null,
+            ])
+            ->first();
+
+        $folderSlug = $existingFolder
+            ? $baseSlug
+            : ($slugStrategy === 'overwrite'
+                ? $baseSlug
+                : $this->suffixSlug($baseSlug, function (string $candidate) use ($contentsTable, $parentId): bool {
+                    return !$contentsTable->exists([
+                        'Contents.parent_id' => $parentId,
+                        'Contents.name' => $candidate,
+                        'Contents.deleted_date IS' => null,
+                    ]);
+                }));
+
+        $folderData = [
+            'content' => [
+                'parent_id' => $parentId,
+                'title' => $title,
+                'name' => $folderSlug,
+                'plugin' => 'BaserCore',
+                'type' => 'ContentFolder',
+                'site_id' => 1,
+                'alias_id' => null,
+                'entity_id' => null,
+                'self_status' => true,
+            ],
+        ];
+
+        if ($existingFolder && $slugStrategy === 'overwrite') {
+            $folder = $foldersService->get((int) $existingFolder->entity_id);
+            $foldersService->update($folder, $folderData, ['associated' => ['Contents']]);
+            $folderContentId = (int) $existingFolder->id;
+            $action = 'updated';
+        } else {
+            $folder = $foldersService->create($folderData, ['associated' => ['Contents']]);
+            $folderContent = $contentsTable->find()
+                ->where([
+                    'Contents.type' => 'ContentFolder',
+                    'Contents.parent_id' => $parentId,
+                    'Contents.name' => $folderSlug,
+                    'Contents.deleted_date IS' => null,
+                ])
+                ->first();
+            $folderContentId = $folderContent ? (int) $folderContent->id : 0;
+            $action = 'created';
+        }
+
+        // コンテンツがある場合は folder/index ページも作成する
+        $rawContent = trim((string) ($item['post_content'] ?: $item['post_excerpt']));
+        if ($rawContent !== '' && $folderContentId > 0) {
+            $pagesService = new PagesService();
+            $indexSlug = 'index';
+            $existingIndex = $this->findExistingPage($folderContentId, $indexSlug);
+            $indexData = [
+                'contents' => $this->replaceUrls($rawContent, $settings),
+                'draft' => $this->replaceUrls($rawContent, $settings),
+                'page_template' => 'default',
+                'content' => [
+                    'parent_id' => $folderContentId,
+                    'title' => $title,
+                    'name' => $indexSlug,
+                    'plugin' => 'BaserCore',
+                    'type' => 'Page',
+                    'site_id' => 1,
+                    'alias_id' => null,
+                    'entity_id' => null,
+                    'author_id' => $authorId,
+                    'self_status' => $status,
+                ],
+            ];
+            if ($slugStrategy === 'overwrite' && $existingIndex) {
+                $pagesService->update($existingIndex, $indexData, ['associated' => ['Contents']]);
+            } else {
+                $pagesService->create($indexData, ['associated' => ['Contents']]);
+            }
+        }
+
+        return ['action' => $action, 'folder_content_id' => $folderContentId];
     }
 
     protected function importPost(array $item, array $settings, int $defaultUserId): array
@@ -553,7 +704,8 @@ class WpImportService
     protected function normalizeSlug(string $rawSlug): string
     {
         $rawSlug = trim($rawSlug) !== '' ? trim($rawSlug) : 'imported-item';
-        return BcUtil::urlencode(mb_substr($rawSlug, 0, 230, 'UTF-8'));
+        $maxLength = (int) Configure::read('BcWpImport.slugMaxLength', 230);
+        return BcUtil::urlencode(mb_substr($rawSlug, 0, $maxLength, 'UTF-8'));
     }
 
     protected function resolvePublishStatus(string $wpStatus, string $publishStrategy): bool
@@ -640,8 +792,11 @@ class WpImportService
     /**
      * ジョブのログファイルから最新 N 行を返す
      */
-    public function getLogLines(string $token, int $limit = 200): array
+    public function getLogLines(string $token, int $limit = 0): array
     {
+        if ($limit === 0) {
+            $limit = (int) Configure::read('BcWpImport.logLineLimit', 200);
+        }
         $logPath = TMP . 'bc_wp_import' . DS . $token . '.log';
         if (!file_exists($logPath)) {
             return [];

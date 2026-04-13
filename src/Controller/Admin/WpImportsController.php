@@ -106,6 +106,11 @@ class WpImportsController extends BcAdminAppController
         }
 
         try {
+            // セッションロックを解放してポーリングリクエストが並行実行できるようにする
+            // CakePHP の Session::close() を使うことで _started フラグが false になり
+            // リクエスト終了時のミドルウェアによる二重 close を防ぐ
+            $this->request->getSession()->close();
+
             $service = new WpImportService();
             $result = $service->importJob($token);
             $result['log_lines'] = $service->getLogLines($token);
@@ -194,6 +199,9 @@ class WpImportsController extends BcAdminAppController
 
     public function get_log(): Response
     {
+        // ファイルを読むだけなのでセッションは不要。すぐ解放して import の邪魔をしない
+        $this->request->getSession()->close();
+
         $token = (string) ($this->request->getQuery('token') ?? '');
         if (!$token || !preg_match('/^[a-f0-9]+$/', $token)) {
             return $this->jsonResponse(['lines' => []]);
