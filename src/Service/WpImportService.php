@@ -772,7 +772,7 @@ class WpImportService
         }
         fputs($fp, "\xEF\xBB\xBF");
         foreach ($rows as $row) {
-            fputcsv($fp, array_map('strval', $row));
+            fputcsv($fp, array_map('strval', $row), ',', '"', '\\');
         }
         fclose($fp);
         return $path;

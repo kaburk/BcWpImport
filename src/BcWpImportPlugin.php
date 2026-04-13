@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace BcWpImport;
 
 use BaserCore\BcPlugin;
+use BcWpImport\Command\CleanupCommand;
 use BcWpImport\Command\RunImportCommand;
 use Cake\Console\CommandCollection;
 use Cake\Core\PluginApplicationInterface;
@@ -34,6 +35,7 @@ class BcWpImportPlugin extends BcPlugin
 	public function console(CommandCollection $commands): CommandCollection
 	{
 		$commands = parent::console($commands);
+		$commands->add('BcWpImport.cleanup', CleanupCommand::class);
 		$commands->add('bc_wp_import.run_import', RunImportCommand::class);
 
 		return $commands;
