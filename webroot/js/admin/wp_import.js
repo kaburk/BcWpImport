@@ -30,9 +30,14 @@
 
     let _elapsedTimer = null;
     let _logPollTimer = null;
+    let _statusPollTimer = null;
 
     function stopLogPolling() {
         if (_logPollTimer) { clearInterval(_logPollTimer); _logPollTimer = null; }
+    }
+
+    function stopStatusPolling() {
+        if (_statusPollTimer) { clearInterval(_statusPollTimer); _statusPollTimer = null; }
     }
 
     function startLogPolling(token, logEl) {
@@ -61,7 +66,10 @@
 
         // タイマーを停止（セクション離脱時）
         if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
-        if (id !== 'js-progress-section') { stopLogPolling(); }
+        if (id !== 'js-progress-section') {
+            stopLogPolling();
+            stopStatusPolling();
+        }
 
         if (id === 'js-progress-section') {
             // 経過時間カウンター
@@ -171,6 +179,32 @@
         }
 
         showSection('js-result-section');
+    }
+
+    function startStatusPolling(token, onError) {
+        stopStatusPolling();
+        const config = window.bcWpImportConfig || {};
+
+        const poll = async function () {
+            try {
+                const formData = new FormData();
+                formData.append('token', token);
+                const data = await apiPost(config.adminBase + '/status', formData, config.csrfToken);
+                const result = data.result || {};
+                if (['completed', 'failed', 'cancelled'].includes(result.status)) {
+                    stopStatusPolling();
+                    stopLogPolling();
+                    showResult(result);
+                }
+            } catch (error) {
+                stopStatusPolling();
+                stopLogPolling();
+                if (onError) onError(error);
+            }
+        };
+
+        poll();
+        _statusPollTimer = setInterval(poll, 2000);
     }
 
     function collectReviewFormData() {
@@ -366,11 +400,14 @@
 
                     const tokenFormData = new FormData();
                     tokenFormData.append('token', importToken);
-                    const result = await apiPost(config.adminBase + '/import', tokenFormData, config.csrfToken);
-
-                    stopLogPolling();
-                    showResult(result.result || {});
+                    await apiPost(config.adminBase + '/import', tokenFormData, config.csrfToken);
+                    startStatusPolling(importToken, function (error) {
+                        showSection('js-upload-section');
+                        showError(error.message || 'インポート状況の取得に失敗しました。');
+                        startImportBtn.disabled = false;
+                    });
                 } catch (error) {
+                    stopStatusPolling();
                     stopLogPolling();
                     showSection('js-upload-section');
                     showError(error.message || 'インポートに失敗しました。');

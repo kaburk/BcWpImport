@@ -34,12 +34,18 @@ class RunImportCommand extends Command
         $token = (string) $args->getArgument('token');
 
         try {
+            @set_time_limit(0);
             Log::info(sprintf('[BcWpImport] background_job_started token=%s', $token), 'wp_import');
             $service = new WpImportService();
             $service->importJob($token);
             Log::info(sprintf('[BcWpImport] background_job_finished token=%s', $token), 'wp_import');
             return self::CODE_SUCCESS;
         } catch (\Throwable $e) {
+            try {
+                $service = new WpImportService();
+                $service->markJobFailed($token, $e->getMessage());
+            } catch (\Throwable) {
+            }
             Log::error(sprintf('[BcWpImport] background_job_error token=%s %s', $token, $e->getMessage()), 'wp_import');
             $io->err($e->getMessage());
             return self::CODE_ERROR;

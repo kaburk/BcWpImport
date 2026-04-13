@@ -129,9 +129,11 @@ class WxrParserService
         $previousUseInternalErrors = libxml_use_internal_errors(true);
         $xml = simplexml_load_file($filePath);
         if (!$xml instanceof SimpleXMLElement) {
+            $errors = libxml_get_errors();
             libxml_clear_errors();
             libxml_use_internal_errors($previousUseInternalErrors);
-            throw new InvalidArgumentException('Failed to parse WXR file.');
+            $messages = array_map(fn($e) => trim($e->message) . ' (line ' . $e->line . ')', $errors);
+            throw new InvalidArgumentException('Failed to parse WXR file: ' . implode('; ', $messages));
         }
 
         libxml_clear_errors();

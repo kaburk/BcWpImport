@@ -112,8 +112,7 @@ class WpImportsController extends BcAdminAppController
             $this->request->getSession()->close();
 
             $service = new WpImportService();
-            $result = $service->importJob($token);
-            $result['log_lines'] = $service->getLogLines($token);
+            $result = $service->startBackgroundImport($token);
             return $this->jsonResponse(['result' => $result]);
         } catch (Throwable $e) {
             return $this->jsonResponse(['message' => $e->getMessage()], 500);

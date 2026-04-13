@@ -276,4 +276,90 @@ XML);
     {
         $this->assertSame([], $this->service->getLogLines('missinglogtoken00000000000000001', 5));
     }
+
+    public function testStartBackgroundImportMarksJobProcessingAndReturnsStatus(): void
+    {
+        $wxrPath = TMP . 'bc_wp_import' . DS . 'background_import_test.xml';
+        if (!is_dir(dirname($wxrPath))) {
+            mkdir(dirname($wxrPath), 0777, true);
+        }
+        file_put_contents($wxrPath, '<rss version="2.0"><channel /></rss>');
+        $this->tempPaths[] = $wxrPath;
+
+        $jobsTable = TableRegistry::getTableLocator()->get('BcWpImport.BcWpImportJobs');
+        $job = $jobsTable->newEntity([
+            'job_token' => 'backgroundimporttesttoken0000000001',
+            'source_filename' => 'background_import_test.xml',
+            'wxr_path' => $wxrPath,
+            'status' => 'waiting',
+            'phase' => 'review',
+            'mode' => 'strict',
+            'import_target' => 'all',
+            'parsed_summary' => json_encode(['item_counts' => ['page' => 1]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'import_settings' => json_encode(['import_target' => 'all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'total_items' => 1,
+            'analyzable_items' => 1,
+            'importable_items' => 1,
+            'expires_at' => FrozenTime::now()->addDays(1),
+        ]);
+        $jobsTable->saveOrFail($job);
+
+        $service = new class(new WxrParserService()) extends WpImportService {
+            public ?string $launchedToken = null;
+
+            protected function startBackgroundProcess(string $token): void
+            {
+                $this->launchedToken = $token;
+            }
+        };
+
+        $result = $service->startBackgroundImport('backgroundimporttesttoken0000000001');
+
+        $this->assertSame('backgroundimporttesttoken0000000001', $service->launchedToken);
+        $this->assertSame('processing', $result['status']);
+        $this->assertSame('import', $result['phase']);
+        $this->assertCount(1, $result['log_lines']);
+        $this->assertStringContainsString('バックグラウンドインポートを起動します。', $result['log_lines'][0]);
+
+        $savedJob = $jobsTable->find()->where(['job_token' => 'backgroundimporttesttoken0000000001'])->firstOrFail();
+        $this->assertSame('processing', $savedJob->status);
+        $this->assertSame('import', $savedJob->phase);
+        $this->assertNull($savedJob->ended_at);
+    }
+
+    public function testMarkJobFailedUpdatesStatusAndWritesLog(): void
+    {
+        $wxrPath = TMP . 'bc_wp_import' . DS . 'mark_failed_test.xml';
+        if (!is_dir(dirname($wxrPath))) {
+            mkdir(dirname($wxrPath), 0777, true);
+        }
+        file_put_contents($wxrPath, '<rss version="2.0"><channel /></rss>');
+        $this->tempPaths[] = $wxrPath;
+
+        $jobsTable = TableRegistry::getTableLocator()->get('BcWpImport.BcWpImportJobs');
+        $job = $jobsTable->newEntity([
+            'job_token' => 'markfailedtesttoken000000000000001',
+            'source_filename' => 'mark_failed_test.xml',
+            'wxr_path' => $wxrPath,
+            'status' => 'processing',
+            'phase' => 'import',
+            'mode' => 'strict',
+            'import_target' => 'all',
+            'expires_at' => FrozenTime::now()->addDays(1),
+        ]);
+        $jobsTable->saveOrFail($job);
+
+        $this->service->markJobFailed('markfailedtesttoken000000000000001', 'test failure');
+
+        $savedJob = $jobsTable->find()->where(['job_token' => 'markfailedtesttoken000000000000001'])->firstOrFail();
+        $this->assertSame('failed', $savedJob->status);
+        $this->assertNotNull($savedJob->ended_at);
+
+        $logPath = TMP . 'bc_wp_import' . DS . 'markfailedtesttoken000000000000001.log';
+        $this->assertFileExists($logPath);
+        $this->tempPaths[] = $logPath;
+        $lines = $this->service->getLogLines('markfailedtesttoken000000000000001');
+        $this->assertNotEmpty($lines);
+        $this->assertStringContainsString('ジョブが異常終了しました: test failure', end($lines));
+    }
 }

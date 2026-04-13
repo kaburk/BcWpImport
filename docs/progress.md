@@ -23,7 +23,7 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - `upload` — WXRファイルのアップロード
 - `analyze` — WXR解析実行
 - `save_review_settings` — 取込前レビュー設定の保存
-- `import` — 取込実行
+- `import` — バックグラウンド取込の起動
 - `status` — ジョブ状態取得
 - `cancel` — ジョブキャンセル
 - `delete` — 個別ジョブ削除（ファイル＋DBレコード）
@@ -37,7 +37,9 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
   - `createJob` — ジョブ作成・ファイル保存
   - `analyzeJob` — 解析実行・サマリ生成
   - `saveReviewSettings` — 著者マッピング・オプション保存
+  - `startBackgroundImport` — CLI コマンド起動による非同期インポート開始
   - `importJob` — 固定ページ・ブログ記事の取り込み
+  - `markJobFailed` — CLI 側の異常終了時にジョブを failed へ更新
   - `getJobStatus` / `cancelJob` / `getReportCsvPath`
   - `getLogLines(token, limit)` — ログファイル（`tmp/bc_wp_import/{token}.log`）の最新N行を返す
   - `appendLog(path, message, overwrite)` — private。ログファイルへ1行追記（初回は上書き）
@@ -69,6 +71,7 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - `webroot/js/admin/wp_import.js`
   - `showSection` でセクション切替時にポーリング・経過時間タイマーを開始/停止
   - `_logPollTimer`: 2秒ごとに `get_log?token=xxx` を fetch してログビューアーを更新（自動スクロール）
+  - `_statusPollTimer`: 2秒ごとに `status` を fetch して completed / failed / cancelled を監視
   - `_elapsedTimer`: 1秒ごとに経過時間を更新
   - `updateBulkDeleteButton`: pending / history 両テーブル対応
   - JSバリデーション：インポート実行前に必須項目を検証してエラー表示
@@ -89,6 +92,8 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
   - `testAppendLogOverwritesThenAppends` — ログファイルの上書き作成と追記
   - `testGetLogLinesReturnsLatestLimitedLines` — 最新 N 行取得の limit 適用
   - `testGetLogLinesReturnsEmptyWhenLogMissing` — ログ未存在時は空配列
+  - `testStartBackgroundImportMarksJobProcessingAndReturnsStatus` — バックグラウンド起動時のジョブ更新と戻り値
+  - `testMarkJobFailedUpdatesStatusAndWritesLog` — CLI 異常終了時の failed 更新とログ出力
 - `tests/TestCase/Controller/Admin/WpImportsControllerTest.php`
   - `testIndex` — 一覧表示と view 変数の確認
   - `testGetLogReturnsLines` / `testGetLogReturnsEmptyWhenTokenInvalid` — ポーリング用ログ取得
@@ -132,7 +137,7 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 
 ## 実装メモ
 
-- `WpImportService` は解析済みジョブを読み込み、post/page ごとに実データへ保存する構成（同期処理）。
+- `WpImportService` は管理画面からはバックグラウンドコマンドで起動し、CLI 側で post/page ごとの実データ保存を行う構成。
 - `WpImportService` は import 実行時に各アイテムの action と message をCSVへ書き出す。
 - ログファイルは `TMP . 'bc_wp_import' . DS . $token . '.log'` に書き出す。エラー・スキップは毎回、成功は100件ごとに出力（大量データのパフォーマンス考慮）。
 - `get_log` アクションはトークン形式（`/^[a-f0-9]+$/`）で検証し、不正なトークンは空配列を返す。
@@ -142,4 +147,4 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - BcWpImportJobsTable に `addBehavior('Timestamp')` を追加済み（欠落が原因で created が null になっていた問題を修正済み）。
 - JS の IIFE パターン（`(function(){'use strict';...})();`）はファイル内に1つのみ。大規模置換後は `grep -c "^})();"` で確認すること。
 - `BcWpImport.cleanup` は `--dry-run` をサポートし、`wxr_path` / `report_csv_path` / `warning_log_path` / `error_log_path` / `tmp/bc_wp_import/{token}.log` を削除対象に含める。
-- `WxrParserServiceTest` / `WpImportServiceTest` / `WpImportsControllerTest` / `CleanupCommandTest` は Docker コンテナ内で実行済み（19 tests, 100 assertions）。
+- `WxrParserServiceTest` / `WpImportServiceTest` / `WpImportsControllerTest` / `CleanupCommandTest` は Docker コンテナ内で実行済み（21 tests, 112 assertions）。

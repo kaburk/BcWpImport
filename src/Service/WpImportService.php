@@ -15,6 +15,7 @@ use Cake\Log\Log;
 use Cake\ORM\TableRegistry;
 use InvalidArgumentException;
 use Psr\Http\Message\UploadedFileInterface;
+use RuntimeException;
 
 class WpImportService
 {
@@ -199,6 +200,7 @@ class WpImportService
         $skipCount = 0;
         $errorCount = 0;
         $processed = 0;
+        $batchSize = max(1, (int) Configure::read('BcWpImport.batchSize', 10));
         $messages = [];
         $reportRows = [['post_type', 'title', 'post_name', 'action', 'message']];
 
@@ -267,7 +269,6 @@ class WpImportService
                 } else {
                     $successCount++;
                     $reportRows[] = [$postType, $title, $postName, $result['action'], ''];
-                    $batchSize = (int) Configure::read('BcWpImport.batchSize', 10);
                     if ($processed % $batchSize === 0) {
                         $this->appendLog($logPath, '[INFO] 処理中... ' . $processed . ' 件完了（成功:' . $successCount . ' スキップ:' . $skipCount . ' エラー:' . $errorCount . '）');
                     }
@@ -278,6 +279,10 @@ class WpImportService
                 $messages[] = $msg;
                 $reportRows[] = [$postType, $title, $postName, 'error', $msg];
                 $this->appendLog($logPath, '[ERROR] ' . $postType . ': ' . $title . ' — ' . $msg);
+            }
+
+            if ($processed > 0 && $processed % $batchSize === 0) {
+                $this->saveJobProgress($jobsTable, $job, $processed, $successCount, $skipCount, $errorCount);
             }
         }
 
@@ -310,6 +315,17 @@ class WpImportService
         ];
     }
 
+    protected function saveJobProgress($jobsTable, object $job, int $processed, int $successCount, int $skipCount, int $errorCount): void
+    {
+        $job = $jobsTable->patchEntity($job, [
+            'processed' => $processed,
+            'success_count' => $successCount,
+            'skip_count' => $skipCount,
+            'error_count' => $errorCount,
+        ]);
+        $jobsTable->saveOrFail($job);
+    }
+
     public function getJobStatus(string $token): array
     {
         $jobsTable = TableRegistry::getTableLocator()->get('BcWpImport.BcWpImportJobs');
@@ -326,6 +342,7 @@ class WpImportService
             'warning_count' => (int) $job->warning_count,
             'error_count' => (int) $job->error_count,
             'has_report' => !empty($job->report_csv_path) && file_exists((string) $job->report_csv_path),
+            'log_lines' => $this->getLogLines($token),
         ];
     }
 
@@ -824,5 +841,128 @@ class WpImportService
         } else {
             Log::info('[BcWpImport] [token:' . $token . '] ' . $message, 'wp_import');
         }
+    }
+
+    public function startBackgroundImport(string $token): array
+    {
+        $jobsTable = TableRegistry::getTableLocator()->get('BcWpImport.BcWpImportJobs');
+        $job = $jobsTable->find()->where(['job_token' => $token])->firstOrFail();
+        if (!$job->parsed_summary) {
+            throw new InvalidArgumentException(__d('baser_core', '先に WXR 解析を完了してください。'));
+        }
+
+        if ($job->status === 'processing') {
+            return $this->getJobStatus($token);
+        }
+
+        $job = $jobsTable->patchEntity($job, [
+            'status' => 'processing',
+            'phase' => 'import',
+            'processed' => 0,
+            'success_count' => 0,
+            'skip_count' => 0,
+            'error_count' => 0,
+            'started_at' => $job->started_at ?: FrozenTime::now(),
+            'ended_at' => null,
+        ]);
+        $jobsTable->saveOrFail($job);
+
+        $logPath = TMP . 'bc_wp_import' . DS . $token . '.log';
+        $this->appendLog($logPath, '[INFO] バックグラウンドインポートを起動します。', true);
+
+        try {
+            $this->startBackgroundProcess($token);
+        } catch (\Throwable $e) {
+            $this->markJobFailed($token, $e->getMessage());
+            throw $e;
+        }
+
+        return $this->getJobStatus($token);
+    }
+
+    public function markJobFailed(string $token, string $message): void
+    {
+        $jobsTable = TableRegistry::getTableLocator()->get('BcWpImport.BcWpImportJobs');
+        $job = $jobsTable->find()->where(['job_token' => $token])->first();
+        if (!$job) {
+            return;
+        }
+
+        $job = $jobsTable->patchEntity($job, [
+            'status' => 'failed',
+            'phase' => 'import',
+            'ended_at' => FrozenTime::now(),
+        ]);
+        $jobsTable->saveOrFail($job);
+
+        $logPath = TMP . 'bc_wp_import' . DS . $token . '.log';
+        $this->appendLog($logPath, '[ERROR] ジョブが異常終了しました: ' . $message, !file_exists($logPath));
+    }
+
+    protected function startBackgroundProcess(string $token): void
+    {
+        $command = $this->buildBackgroundCommand($token);
+
+        if (function_exists('exec')) {
+            $output = [];
+            $exitCode = 0;
+            exec($command, $output, $exitCode);
+            if ($exitCode === 0) {
+                return;
+            }
+        }
+
+        if (function_exists('proc_open')) {
+            $process = proc_open($command, [
+                0 => ['pipe', 'r'],
+                1 => ['file', '/dev/null', 'a'],
+                2 => ['file', '/dev/null', 'a'],
+            ], $pipes, ROOT);
+            if (is_resource($process)) {
+                foreach ($pipes as $pipe) {
+                    if (is_resource($pipe)) {
+                        fclose($pipe);
+                    }
+                }
+                proc_close($process);
+                return;
+            }
+        }
+
+        throw new RuntimeException('バックグラウンドインポートの起動に失敗しました。');
+    }
+
+    protected function buildBackgroundCommand(string $token): string
+    {
+        $phpBinary = $this->resolvePhpCliBinary();
+        $cakeScript = ROOT . DS . 'bin' . DS . 'cake.php';
+
+        return sprintf(
+            '%s %s bc_wp_import.run_import %s > /dev/null 2>&1 &',
+            escapeshellarg($phpBinary),
+            escapeshellarg($cakeScript),
+            escapeshellarg($token)
+        );
+    }
+
+    protected function resolvePhpCliBinary(): string
+    {
+        if (PHP_SAPI === 'cli' && PHP_BINARY && is_executable(PHP_BINARY)) {
+            return PHP_BINARY;
+        }
+
+        $candidates = array_filter([
+            PHP_BINDIR ? PHP_BINDIR . DS . 'php' : null,
+            '/usr/local/bin/php',
+            '/usr/bin/php',
+        ]);
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate) && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return 'php';
     }
 }
