@@ -12,6 +12,7 @@ use BcWpImport\Service\WxrParserService;
 use Cake\I18n\FrozenTime;
 use Cake\ORM\TableRegistry;
 use CakephpFixtureFactories\Scenario\ScenarioAwareTrait;
+use ReflectionMethod;
 
 class WpImportServiceTest extends BcTestCase
 {
@@ -20,6 +21,8 @@ class WpImportServiceTest extends BcTestCase
     private WpImportService $service;
 
     private array $tempPaths = [];
+
+    private ReflectionMethod $appendLogMethod;
 
     public function setUp(): void
     {
@@ -31,8 +34,8 @@ class WpImportServiceTest extends BcTestCase
 
         TableRegistry::getTableLocator()->get('BaserCore.Contents')->recover();
 
-        $this->loginAdmin($this->getRequest('/'));
         $this->service = new WpImportService(new WxrParserService());
+        $this->appendLogMethod = new ReflectionMethod(WpImportService::class, 'appendLog');
     }
 
     public function tearDown(): void
@@ -224,5 +227,53 @@ XML);
         $logs = $this->service->getLogLines('wpimporttesttoken0000000000000001');
         $this->assertNotEmpty($logs);
         $this->assertStringContainsString('インポート完了', end($logs));
+    }
+
+    public function testAppendLogOverwritesThenAppends(): void
+    {
+        $token = 'appendlogtesttoken0000000000000001';
+        $logPath = TMP . 'bc_wp_import' . DS . $token . '.log';
+        if (!is_dir(dirname($logPath))) {
+            mkdir(dirname($logPath), 0777, true);
+        }
+        file_put_contents($logPath, "old line\n");
+        $this->tempPaths[] = $logPath;
+
+        $this->appendLogMethod->invoke($this->service, $logPath, '[INFO] first', true);
+        $this->appendLogMethod->invoke($this->service, $logPath, '[SKIP] second');
+
+        $lines = $this->service->getLogLines($token, 10);
+        $this->assertCount(2, $lines);
+        $this->assertStringNotContainsString('old line', implode("\n", $lines));
+        $this->assertStringContainsString('[INFO] first', $lines[0]);
+        $this->assertStringContainsString('[SKIP] second', $lines[1]);
+    }
+
+    public function testGetLogLinesReturnsLatestLimitedLines(): void
+    {
+        $token = 'getloglinestesttoken0000000000001';
+        $logPath = TMP . 'bc_wp_import' . DS . $token . '.log';
+        if (!is_dir(dirname($logPath))) {
+            mkdir(dirname($logPath), 0777, true);
+        }
+        file_put_contents($logPath, implode("\n", [
+            '10:00:00 first',
+            '10:00:01 second',
+            '10:00:02 third',
+            '10:00:03 fourth',
+        ]) . "\n");
+        $this->tempPaths[] = $logPath;
+
+        $lines = $this->service->getLogLines($token, 2);
+
+        $this->assertSame([
+            '10:00:02 third',
+            '10:00:03 fourth',
+        ], $lines);
+    }
+
+    public function testGetLogLinesReturnsEmptyWhenLogMissing(): void
+    {
+        $this->assertSame([], $this->service->getLogLines('missinglogtoken00000000000000001', 5));
     }
 }

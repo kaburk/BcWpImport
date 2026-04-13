@@ -13,6 +13,9 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - Plugin.php / config.php / setting.php / routes.php
 - Migration: `CreateBcWpImportJobs`
 
+#### コマンド
+- `BcWpImport.cleanup` — `expires_at` を過ぎたジョブの WXR / レポート CSV / warning_log / error_log / ポーリング用ログと DB レコードを一括削除（`--dry-run` 対応）
+
 #### コントローラ（`WpImportsController`）
 ※ URL は InflectedRoute によって camelCase 変換されないため、全アクションを snake_case で定義
 
@@ -83,6 +86,19 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
   - `testParseItemsWithHierarchy` — `wp_post_id` / `wp_post_parent` のパース
 - `tests/TestCase/Service/WpImportServiceTest.php`
   - `testImportJobCreatesPagesPostsAndReport` — page / post の取込、親子ページ、カテゴリ・タグ生成、URL 置換、レポート CSV・ログ出力
+  - `testAppendLogOverwritesThenAppends` — ログファイルの上書き作成と追記
+  - `testGetLogLinesReturnsLatestLimitedLines` — 最新 N 行取得の limit 適用
+  - `testGetLogLinesReturnsEmptyWhenLogMissing` — ログ未存在時は空配列
+- `tests/TestCase/Controller/Admin/WpImportsControllerTest.php`
+  - `testIndex` — 一覧表示と view 変数の確認
+  - `testGetLogReturnsLines` / `testGetLogReturnsEmptyWhenTokenInvalid` — ポーリング用ログ取得
+  - `testCancel` — ジョブキャンセル
+  - `testDeleteAll` — 一括削除
+  - `testDownloadReport` — レポート CSV ダウンロード
+- `tests/TestCase/Command/CleanupCommandTest.php`
+  - `testExecuteReturnsWhenNoExpiredJobs` — 対象なし時の正常終了
+  - `testExecuteDryRunDoesNotDeleteExpiredJobs` — dry-run では削除せず件数のみ表示
+  - `testExecuteDeletesExpiredJobsAndFiles` — 期限切れジョブと関連ファイルの削除
 
 ---
 
@@ -96,13 +112,13 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
   - 追加: 親子ページ、フォルダ + index ページ、カテゴリ・タグ生成、本文 / 抜粋の URL 置換、レポート CSV / ログ生成
 
 #### v1.1以降（テスト拡充）
-- [ ] `WpImportServiceTest` の追加拡充（appendLog / getLogLines のユニットテストを追加）
-- [ ] `WpImportsControllerTest` の作成（get_log レスポンス・delete_all 等）
+- [x] `WpImportServiceTest` の追加拡充（appendLog / getLogLines のユニットテストを追加）
+- [x] `WpImportsControllerTest` の作成（get_log レスポンス・delete_all・cancel・download_report 等）
 
 #### 将来対応（大量データ・非同期処理）
 - [ ] Chunked / resumable import（大量データ対応・分割実行）
 - [ ] `warning_log_path` / `error_log_path` の活用（警告・エラーの詳細ダウンロード）
-- [ ] ジョブクリーンアップコマンドの実装 — `expires_at` を参照して期限切れジョブ（WXR ファイル・ログファイル・DB レコード）を一括削除する `bin/cake BcWpImport.cleanup` コマンド
+- [x] ジョブクリーンアップコマンドの実装 — `expires_at` を参照して期限切れジョブ（WXR ファイル・ログファイル・DB レコード）を一括削除する `bin/cake BcWpImport.cleanup` コマンド
 
 #### コンテンツタイプ拡張（将来対応）
 - [ ] **コンテンツリンク（ContentLink）対応** — WXR の `wp:post_type=page` かつ postmeta に URL が含まれる場合に ContentLink として取込予定
@@ -125,4 +141,5 @@ BcWpExport 側は [plugins/BcWpExport/docs/progress.md](../../BcWpExport/docs/pr
 - 履歴テーブルの日時は `Timestamp` Behavior が `created` / `modified` を自動セット。テンプレート側で `$job->created->format('Y/m/d H:i')` にて表示。
 - BcWpImportJobsTable に `addBehavior('Timestamp')` を追加済み（欠落が原因で created が null になっていた問題を修正済み）。
 - JS の IIFE パターン（`(function(){'use strict';...})();`）はファイル内に1つのみ。大規模置換後は `grep -c "^})();"` で確認すること。
-- `WxrParserServiceTest` / `WpImportServiceTest` は Docker コンテナ内で実行済み（7 tests, 52 assertions）。
+- `BcWpImport.cleanup` は `--dry-run` をサポートし、`wxr_path` / `report_csv_path` / `warning_log_path` / `error_log_path` / `tmp/bc_wp_import/{token}.log` を削除対象に含める。
+- `WxrParserServiceTest` / `WpImportServiceTest` / `WpImportsControllerTest` / `CleanupCommandTest` は Docker コンテナ内で実行済み（19 tests, 100 assertions）。
