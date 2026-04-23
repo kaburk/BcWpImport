@@ -1,0 +1,5 @@
+setting_customize.php
+schema-dump-default.lock
+composer.lock
+vendor/*
+!vendor/.gitkeep
