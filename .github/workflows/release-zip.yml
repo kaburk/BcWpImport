@@ -9,6 +9,7 @@ permissions:
 
 env:
   ZIP_NAME: ${{ github.event.repository.name }}.zip
+  FOLDER_NAME: ${{ github.event.repository.name }}
 
 jobs:
   build-and-upload:
@@ -19,9 +20,11 @@ jobs:
 
       - name: プラグインディレクトリをZIP化
         run: |
-          zip -r "$ZIP_NAME" . \
-              -x ".git/*" \
-              -x ".github/*" \
+          mkdir "$FOLDER_NAME"
+          find . -maxdepth 1 -not -name "$FOLDER_NAME" -not -name "." -exec mv {} "$FOLDER_NAME/" \;
+          zip -r "$ZIP_NAME" "$FOLDER_NAME" \
+              -x "$FOLDER_NAME/.git/*" \
+              -x "$FOLDER_NAME/.github/*" \
               -x "*.zip"
 
       - name: リリースにZIPをアップロード
