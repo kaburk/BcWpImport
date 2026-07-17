@@ -5,8 +5,12 @@
  * @var array $pendingJobs
  * @var array $historyJobs
  */
+use BaserCore\Utility\BcUtil;
+
 $this->BcAdmin->setTitle(__d('baser_core', 'WordPressインポート'));
-$adminBase = '/baser/admin/bc-wp-import/wp_imports';
+$basePath = rtrim((string)$this->request->getAttribute('base'), '/');
+$adminBase = $basePath . '/' . ltrim(BcUtil::getPrefix(), '/') . '/bc-wp-import/wp_imports';
+$assetUrl = $basePath . '/bc_wp_import/js/admin/wp_import.js';
 $csrfToken = $this->request->getAttribute('csrfToken');
 ?>
 
@@ -436,4 +440,4 @@ $csrfToken = $this->request->getAttribute('csrfToken');
     csrfToken: '<?= h($csrfToken) ?>'
   };
 </script>
-<script src="/bc_wp_import/js/admin/wp_import.js"></script>
+<script src="<?= h($assetUrl) ?>"></script>

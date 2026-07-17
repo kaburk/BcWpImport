@@ -60,6 +60,15 @@ class WpImportsControllerTest extends BcTestCase
         $this->assertEquals($job->job_token, $vars['pendingJobs'][0]->job_token);
     }
 
+    public function testIndexUsesBasePathInAdminBase(): void
+    {
+        $this->loginAdmin($this->getRequest('/oge/baser/admin/bc-wp-import/wp_imports/index'));
+        $this->get('/oge/baser/admin/bc-wp-import/wp_imports/index');
+
+        $this->assertResponseOk();
+        $this->assertResponseContains("adminBase: '/oge/baser/admin/bc-wp-import/wp_imports'");
+    }
+
     public function testGetLogReturnsLines(): void
     {
         $token = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
