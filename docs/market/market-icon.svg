@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="260" viewBox="0 0 260 260">
+  <defs>
+    <style>
+      .nm  { font-family:'Hiragino Sans'; font-weight:800; letter-spacing:-0.4px; }
+      .jp  { font-family:'Hiragino Sans'; font-weight:600; font-size:13px; fill:#16294D; }
+      .kw  { font-family:'Hiragino Sans'; font-weight:300; font-size:10px; fill:#6B7C93; letter-spacing:0.2px; }
+      .lb  { font-family:'Hiragino Sans'; font-weight:800; font-size:9px; fill:#FFFFFF; letter-spacing:0.5px; }
+      .cd  { font-family:'Hiragino Sans'; font-weight:800; font-size:11px; fill:#FFFFFF; }
+    </style>
+    <path id="q" d="M0 7 A7 7 0 0 1 7 0 L40 0 A40 40 0 0 1 0 40 Z"/>
+  </defs>
+  <rect width="260" height="260" fill="#FFFFFF"/>
+  <!-- 角のオーナメント -->
+  <g>
+    <use href="#q" fill="#E4EFFB" transform="translate(0,0) scale(0.95)"/>
+    <use href="#q" fill="#2FA84F" opacity=".85" transform="translate(50,0) scale(0.4)"/>
+    <use href="#q" fill="#E1F3E4" transform="translate(260,0) rotate(90) scale(0.62)"/>
+    <rect x="243" y="38" width="10" height="10" rx="3" fill="none" stroke="#4E96E5" stroke-width="2.5"/>
+    <use href="#q" fill="#E1F3E4" transform="translate(0,260) rotate(-90) scale(0.66)"/>
+    <rect x="30" y="236" width="9" height="9" rx="2.5" fill="#4E96E5" opacity=".5"/>
+    <use href="#q" fill="#E4EFFB" transform="translate(260,260) rotate(180) scale(1.02)"/>
+    <use href="#q" fill="#2FA84F" opacity=".8" transform="translate(206,260) rotate(180) scale(0.36)"/>
+  </g>
+  <g>
+    <rect x="26" y="54" width="42" height="56" rx="4" fill="#FFFFFF" stroke="#C6D2E2" stroke-width="2.5"/>
+    <rect x="31" y="80" width="34" height="6" rx="3" fill="#C6D2E2"/>
+    <rect x="31" y="90" width="26" height="6" rx="3" fill="#C6D2E2"/>
+    <rect x="31" y="100" width="30" height="6" rx="3" fill="#C6D2E2"/>
+    <rect x="21" y="62" width="32" height="16" rx="3" fill="#0F4E9C"/>
+    <text class="lb" x="37" y="74" text-anchor="middle">WXR</text>
+  </g>
+  <path d="M70 82 H82" fill="none" stroke="#4E96E5" stroke-width="3" stroke-dasharray="5 5" stroke-linecap="round"/>
+  <path d="M82 74 L94 82 L82 90 Z" fill="#1668C9"/>
+  <g>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(0 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(45 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(90 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(135 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(180 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(225 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(270 128.0 82.0)"/>
+    <rect x="122.5" y="49.5" width="11" height="13" rx="3.5" fill="#1668C9" transform="rotate(315 128.0 82.0)"/>
+    <circle cx="128.0" cy="82.0" r="24" fill="#1668C9"/>
+    <circle cx="128.0" cy="82.0" r="19" fill="#4E96E5"/>
+    <g transform="translate(113.10,69.30) scale(0.215)" fill="#FFFFFF"><path fill-rule="evenodd" clip-rule="evenodd" d="M69.2,118.3c-5.2,0-10.5-2-14.4-5.9L6,64.3C2,60.3,0,55.1,0,50c0-5.1,2-10.4,6-14.3L36.2,5.9C40.2,2,45.5,0,50.7,0c5.2,0,10.5,2,14.4,5.9L76.4,17L61.9,31.3L50.7,20.2L20.4,50l48.8,48.1L117.9,50L98.5,30.8L53.8,75L39.4,60.7l44.7-44.1c4-3.9,9.3-5.9,14.5-5.9c5.2,0,10.5,2,14.4,5.9l19.4,19.2c4,3.9,6,9.1,6,14.3c0,5.1-2,10.3-6,14.3l-48.8,48.1C79.7,116.3,74.4,118.3,69.2,118.3L69.2,118.3z"/></g>
+  </g>
+  <path d="M164 82 H176" fill="none" stroke="#4E96E5" stroke-width="3" stroke-dasharray="5 5" stroke-linecap="round"/>
+  <path d="M176 74 L188 82 L176 90 Z" fill="#1668C9"/>
+  <g>
+    <rect x="192" y="54" width="42" height="56" rx="5" fill="#FFFFFF" stroke="#C6D2E2" stroke-width="2.5"/>
+    <path d="M192 59 a5 5 0 0 1 5 -5 h32 a5 5 0 0 1 5 5 V68 H192 Z" fill="#1668C9"/>
+    <rect x="198" y="74" width="30" height="14" rx="3" fill="#E4EFFB"/>
+    <g fill="#C6D2E2"><rect x="198" y="93" width="30" height="5" rx="2.5"/><rect x="198" y="102" width="22" height="5" rx="2.5"/></g>
+  </g>
+  <text class="nm" style="font-size:27.00px" x="130" y="176" text-anchor="middle"><tspan fill="#1668C9">Bc</tspan><tspan fill="#16294D">WpImport</tspan></text>
+  <text class="jp" x="130" y="199" text-anchor="middle">WordPress 記事取り込み</text>
+  <text class="kw" x="130" y="218" text-anchor="middle">WXR取込 / 記事・固定ページ / カテゴリ・タグ</text>
+  <g fill="none" stroke="#2FA84F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+    <path d="M112 232 l6 5 l-6 5"/><path d="M124 232 l6 5 l-6 5"/><path d="M136 232 l6 5 l-6 5"/>
+  </g>
+</svg>
